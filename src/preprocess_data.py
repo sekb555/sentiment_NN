@@ -17,6 +17,7 @@ class PreprocessData:
     def preprocess_text(self, text):
 
         if isinstance(text, str):
+            text = text.lower()
             text = re.sub(r'@\w+', '', text)  # remove user tags
             text = re.sub(r'http\S+', '', text)
             text = re.sub(r'[^a-zA-Z0-9 ]', '', text)
@@ -24,6 +25,7 @@ class PreprocessData:
             text = html.unescape(text)
             return text
         elif isinstance(text, pd.Series):
+            text = text.str.lower()
             text = text.astype(str).str.replace(
                 r'@\w+', '', regex=True)  # remove user tags
             text = text.astype(str).str.replace(
@@ -55,8 +57,8 @@ class PreprocessData:
 
         df.drop(columns=["ID", "Flag", "User", "Date"], inplace=True)
 
-        df1 = df.head(256)
-        df2 = df.tail(256)
+        df1 = df.head(512)
+        df2 = df.tail(512)
         df = pd.concat([df1, df2])
         
         # assign text and sentiment to variables
