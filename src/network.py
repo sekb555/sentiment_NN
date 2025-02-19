@@ -7,6 +7,7 @@ from dataset import make_dataset
 
 from sklearn.metrics import classification_report
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
 
 
 class nn_model(torch.nn.Module):
@@ -14,7 +15,7 @@ class nn_model(torch.nn.Module):
     def __init__(self):
         super(nn_model, self).__init__()
         self.lay1 = torch.nn.Linear(64, 45)
-        self.activation = torch.nn.ReLU()
+        self.activation = torch.nn.GELU()
         self.lay2 = torch.nn.Linear(45, 2)
         self.softmax = torch.nn.Softmax(dim=1)
 
@@ -31,7 +32,7 @@ model = nn_model()
 
 class nn_train():
 
-    def __init__(self, file, max_len = 64, epochs = 15, learning_rate = 0.0001):    
+    def __init__(self, file = "data/processed_data.csv", max_len = 64, epochs = 4, learning_rate = 0.01):    
         self.device = torch.accelerator.current_accelerator(
         ).type if torch.accelerator.is_available() else "cpu"
         print(self.device)
@@ -42,7 +43,7 @@ class nn_train():
         self.learning_rate = learning_rate
         
         self.loss_fn = torch.nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.AdamW(
+        self.optimizer = torch.optim.Adam(
             params=self.model.parameters(), lr=learning_rate)
         self.tokenizer = TfidfVectorizer(max_features=64)
         
@@ -53,11 +54,8 @@ class nn_train():
     
     def load_data(self):
         df = self.read_data()
-
-        train_data = df.sample(frac=0.8, random_state=42).reset_index(drop=True)
-        test_data = df.sample(frac = 0.8, random_state=314).reset_index(drop=True)
-
-        print(test_data['Polarity'].value_counts(normalize=True))
+        
+        train_data, test_data = train_test_split(df, test_size=0.2, random_state=42, stratify=df['Polarity'])
         
         self.tokenizer.fit(train_data['Processed_Tweets'])
         
@@ -97,7 +95,9 @@ class nn_train():
                 self.optimizer.step()
                 
                 i += 1
-                print(f"batch: {i}, completion: {round((i/len(self.train_dataloader))*100, 2)} %")
+                completion = round((i/len(self.train_dataloader))*100, 2)
+                if completion % 10 < 1:
+                    print(f"batch: {i}, completion: {completion} %")
                    
             print(f"Epoch: {epoch+1}, Loss:  {loss.item()}")
 
@@ -129,11 +129,40 @@ class nn_train():
         
         print(classification_report(y_test, y_pred))
         
+    def IO(self, text, input_model):
+        model = nn_model().to(self.device)
+        model.load_state_dict(torch.load(input_model))
+        model.eval()
+        
+        
+        text = [text]
+        text = self.tokenizer.transform(text)
+        if hasattr(text, "toarray"):
+            text = text.toarray()  
+            
+        text = torch.tensor(text, dtype=torch.float).to(self.device)
+        
+        with torch.no_grad():
+            output_torch = model(text)
+            print(output_torch[0][1])
+            output = output_torch.cpu().detach().numpy()
+        
+        if abs(output[0][1]-output[0][0]) < 0.35:
+            return "Neutral"
+        
+        elif output[0][1] > output[0][0]:
+            return "Positive"
+        
+        elif output[0][0] > output[0][1]:
+            return "Negative"
+        
+        
     
 if __name__ == "__main__":
-    train = nn_train("data/processed_data.csv")
+    train = nn_train()
     train.load_data()
-    train.train()
-    train.save_model()
-    train.evaluate_model()
+    # train.train()
+    # train.save_model()
+    # train.evaluate_model()
+    print(train.IO("wow that is bad", "data/model.pth"))
         
