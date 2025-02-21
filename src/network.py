@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 from dataset import make_dataset
 
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
@@ -14,15 +14,21 @@ class nn_model(torch.nn.Module):
 
     def __init__(self):
         super(nn_model, self).__init__()
-        self.lay1 = torch.nn.Linear(64, 45)
-        self.activation = torch.nn.GELU()
-        self.lay2 = torch.nn.Linear(45, 2)
+        width = 64
+        act = torch.nn.GELU()
+        self.lay1 = torch.nn.Linear(64, width)
+        self.activation1 = act
+        self.lay2 = torch.nn.Linear(width, width)
+        self.activation2 = act
+        self.lay3 = torch.nn.Linear(width, 2)
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
         x = self.lay1(x)
-        x = self.activation(x)
+        x = self.activation1(x)
         x = self.lay2(x)
+        x = self.activation2(x)
+        x = self.lay3(x)
         x = self.softmax(x)
         return x
 
@@ -32,7 +38,7 @@ model = nn_model()
 
 class nn_train():
 
-    def __init__(self, file = "data/processed_data.csv", max_len = 64, epochs = 4, learning_rate = 0.01):    
+    def __init__(self, file = "data/processed_data.csv", max_len = 64, epochs = 1, learning_rate = 0.01):    
         self.device = torch.accelerator.current_accelerator(
         ).type if torch.accelerator.is_available() else "cpu"
         print(self.device)
@@ -95,7 +101,7 @@ class nn_train():
                 self.optimizer.step()
                 
                 i += 1
-                completion = round((i/len(self.train_dataloader))*100, 2)
+                completion = int(round((i/len(self.train_dataloader))*100, 0))
                 if completion % 10 < 1:
                     print(f"batch: {i}, completion: {completion} %")
                    
@@ -126,8 +132,24 @@ class nn_train():
             
             y_pred.extend(torch.argmax(output, 1).tolist())
             y_test.extend(targets.tolist())
+            
+        con_mat = confusion_matrix(y_test,y_pred)
+        print("Confusion Matrix:")
+        print(con_mat)
+        true_posi = con_mat[1][1]
+        false_posi = con_mat[0][1]
+        false_neg = con_mat[1][0]
+        true_neg = con_mat[0][0]
+        accuracy = (true_posi + true_neg) / (true_posi + true_neg + false_posi + false_neg)
+        print(f"Accuracy: {round(accuracy, 2)}")
+        recall = true_posi / (true_posi + false_neg)
+        print(f"Recall: {round(recall, 2)}")
+        precision = true_posi / (true_posi + false_posi)
+        print(f"Precision: {round(precision, 2)}")
+        f1_score = 2 * (precision * recall) / (precision + recall)
+        print(f"F1 Score: {round(f1_score, 2)}")
         
-        print(classification_report(y_test, y_pred))
+        
         
     def IO(self, text, input_model):
         model = nn_model().to(self.device)
@@ -161,8 +183,7 @@ class nn_train():
 if __name__ == "__main__":
     train = nn_train()
     train.load_data()
-    # train.train()
-    # train.save_model()
-    # train.evaluate_model()
-    print(train.IO("wow that is bad", "data/model.pth"))
+    train.train()
+    train.save_model()
+    train.evaluate_model()
         
